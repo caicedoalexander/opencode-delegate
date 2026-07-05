@@ -14,7 +14,13 @@ async function isGitRepo(dir: string): Promise<boolean> {
   try {
     await git(dir, "rev-parse", "--git-dir");
     return true;
-  } catch {
+  } catch (err) {
+    // Distinguish between "git binary missing" (ENOENT) and "directory is not a repo" (git exits non-zero).
+    // ENOENT means the git command itself failed to spawn, so rethrow with a clearer message.
+    // Other errors typically mean git ran but exited non-zero because the dir is not a repo.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`git no está disponible en el PATH: ${String(err)}`);
+    }
     return false;
   }
 }

@@ -34,12 +34,29 @@ opencode serve  (proceso persistente, lanzado y supervisado por el MCP server)
 
 - El MCP server se bundlea en el plugin vía `.mcp.json` usando
   `${CLAUDE_PLUGIN_ROOT}`.
-- En la primera llamada, el server hace health check al puerto configurado; si
-  no hay un `opencode serve` vivo, lo lanza y lo supervisa (restart con
-  backoff exponencial; máximo 1 restart automático por fallo, luego error
-  accionable).
-- Estado de jobs: en memoria en el MCP server + persistido en archivos por job
-  (reconstruible tras reinicio del server).
+
+**Principio rector (resultado de auditoría): disco-primero.** Claude Code
+**no reconecta ni reinicia** MCP servers stdio que mueren (a diferencia de
+HTTP/SSE, que reintenta con backoff), y hay issues reportados de procesos
+stdio terminados inesperadamente. Por tanto:
+
+- El estado en memoria es solo una caché: la fuente de verdad de los jobs son
+  los archivos en `.opencode-delegate/jobs/`. Al arrancar, el MCP server
+  ejecuta *job recovery*: lee todos los `meta.json` y reconstruye la tabla de
+  jobs (marcando como `failed` los `running` cuyo proceso ya no existe si no
+  puede readoptarlos vía la API de opencode serve).
+- Health check de `opencode serve` **en cada tool call** (no solo la
+  primera); si no está vivo, se relanza. Máximo 1 relanzamiento automático
+  por llamada; segundo fallo → error accionable.
+- **Anti-duplicados:** antes de lanzar `opencode serve`, verificación de
+  puerto + lock file (`.opencode-delegate/serve.lock` con PID y puerto). Si
+  hay una instancia sana, se reutiliza.
+- **Limpieza de huérfanos:** hook `Stop`/`SessionEnd` del plugin que termina
+  el `opencode serve` lanzado por esta sesión (identificado por el lock
+  file). Documentar que tras `/reload-plugins` puede quedar una instancia
+  vieja y cómo limpiarla.
+- stdout/stderr de `opencode serve` se capturan en
+  `.opencode-delegate/serve.log` — ahí aparecen errores de auth/puerto.
 
 ## 3. Superficie de tools (espejo del Agent tool nativo)
 
@@ -53,6 +70,18 @@ opencode serve  (proceso persistente, lanzado y supervisado por el MCP server)
 
 **Slash commands** delgados que invocan las tools:
 `/opencode-delegate:run|status|result|cancel|cleanup`.
+
+**Modo síncrono (`run_in_background: false`):** viable pero acotado. El
+timeout de tool call MCP es un límite duro de pared configurable por server
+(campo `timeout` en `.mcp.json`); el server además emite progress
+notifications periódicas durante la ejecución. Tope recomendado del modo
+síncrono: el `timeout_minutes` del job, y el `timeout` del server en
+`.mcp.json` se fija por encima de ese tope. Para tareas largas, el default
+`run_in_background: true` es el camino normal.
+
+**Nota de naming:** en el nombre final de la tool, Claude Code transforma los
+caracteres no alfanuméricos, quedando como
+`mcp__plugin_opencode_delegate_<server>__delegate` — cosmético, sin impacto.
 
 **Delegación autónoma:** la descripción de `delegate` instruye a Claude a
 delegar tareas mecánicas, búsquedas amplias, boilerplate y trabajo
@@ -80,7 +109,9 @@ plugin lo sugiere; no edita archivos del usuario sin confirmación).
 2. El job corre con `--dir` apuntando al worktree.
 3. `result.md` incluye: ruta del worktree, rama, `git diff --stat` resumido.
 4. **Merge siempre manual** — decide el orquestador o el usuario.
-5. `cleanup` elimina worktree + rama con confirmación.
+5. `cleanup` elimina worktree + rama con confirmación. Debe ser idempotente:
+   si el usuario ya borró el worktree o la rama a mano, `cleanup` lo registra
+   y continúa sin fallar (`git worktree prune` + verificación de existencia).
 6. Proyecto sin git + `isolation: "worktree"` → error explícito, sin fallback
    silencioso.
 
@@ -114,8 +145,9 @@ referencia (OpenCode Zen); se ajustan por config sin tocar código.
 
 ## 7. Manejo de errores
 
-- `opencode serve` caído → 1 restart automático con backoff; segundo fallo →
-  error accionable ("verifica `opencode auth list`", puerto ocupado, etc.).
+- `opencode serve` caído → health check por llamada + 1 relanzamiento
+  automático; segundo fallo → error accionable ("verifica
+  `opencode auth list`", puerto ocupado, revisar `serve.log`, etc.).
 - Timeout por job (`timeout_minutes`, default 30) → estado `failed`, log
   preservado.
 - Validación de parámetros con JSON Schema en el borde MCP.
@@ -141,6 +173,7 @@ referencia (OpenCode Zen); se ajustan por config sin tocar código.
 opencode-delegate/
 ├── .claude-plugin/plugin.json
 ├── .mcp.json
+├── hooks/hooks.json                # Stop/SessionEnd: limpieza de opencode serve
 ├── commands/{run,status,result,cancel,cleanup}.md
 ├── server/
 │   ├── src/
@@ -167,9 +200,16 @@ opencode-delegate/
 
 ## 11. Riesgos conocidos
 
-- **API de `opencode serve` no validada aún** contra esta versión (1.17.8):
-  el primer paso de implementación es un spike que confirme endpoints y
-  formato SSE reales.
+- **BLOCKER — API de `opencode serve` no validada aún** contra la versión
+  instalada (1.17.8). El primer paso del plan de implementación es
+  obligatoriamente un spike (~2-3 h) que confirme: endpoints HTTP reales,
+  formato exacto de eventos SSE (tool calls, texto, errores), cómo cancelar
+  un job, y si una sesión puede readoptarse tras reinicio del cliente. Si la
+  API difiere de lo asumido, se revisa este diseño antes de implementar.
+- **Ciclo de vida stdio (auditado):** Claude Code no reconecta servers stdio
+  caídos y puede terminarlos inesperadamente — mitigado por el principio
+  disco-primero, job recovery al arrancar, lock file y hook de limpieza
+  (sección 2).
 - Plugin de referencia (`tasict/opencode-plugin-cc`) tiene adopción mínima;
   se usa como referencia de lectura, no como base de código.
 - Publicación pública: revisar lineamientos de marca de Anthropic antes del

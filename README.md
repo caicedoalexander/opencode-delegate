@@ -94,6 +94,7 @@ Slash commands delgados que invocan las tools:
 | `/opencode-delegate:result [jobId]` | `/opencode-delegate:result` (usa el último job lanzado) |
 | `/opencode-delegate:cancel [jobId]` | `/opencode-delegate:cancel ocd-abc123-ff00` |
 | `/opencode-delegate:cleanup [jobId]` | `/opencode-delegate:cleanup` (todos los terminados, con confirmación) |
+| `/opencode-delegate:config [set]` | `/opencode-delegate:config` (ver config efectiva) · `config set` (asistente guiado) |
 
 ## Subagente delegador
 
@@ -142,9 +143,11 @@ En background, `delegate` devuelve `jobId` + `outputFile` (apto para
 ## Configuración de modelos
 
 **No se necesita ningún archivo para empezar**: el server trae defaults
-compilados (los del ejemplo de abajo). Crea un config solo para
-sobreescribirlos, en cualquiera de estas dos rutas (el merge es parcial:
-basta con declarar lo que cambias):
+compilados (los del ejemplo de abajo). Para personalizar, lo más fácil es
+`/opencode-delegate:config set` (asistente guiado que lista tus modelos
+disponibles y escribe el archivo por ti); `/opencode-delegate:config` sin
+argumentos muestra la config efectiva. Si prefieres editar a mano, las rutas
+son estas (el merge es parcial: basta con declarar lo que cambias):
 
 - Nivel usuario: `~/.config/opencode-delegate/config.json`
   (Windows: `C:\Users\<usuario>\.config\opencode-delegate\config.json`)

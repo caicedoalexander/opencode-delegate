@@ -1,0 +1,9 @@
+{
+  "name": "opencode-delegate",
+  "version": "0.1.0",
+  "description": "Delegate subagent tasks from Claude Code to OpenCode-managed models via MCP",
+  "author": { "name": "Alexander Caicedo" },
+  "mcpServers": "./.mcp.json",
+  "commands": "./commands",
+  "hooks": "./hooks/hooks.json"
+}

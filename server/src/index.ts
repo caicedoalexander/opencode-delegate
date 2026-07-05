@@ -5,6 +5,7 @@ import { z } from "zod";
 import { JobStore } from "./jobs.js";
 import { loadConfig } from "./models.js";
 import { OpencodeClient } from "./opencode-client.js";
+import { timeoutMinutesSchema } from "./schemas.js";
 import { ServeManager } from "./serve-manager.js";
 import type { ToolDeps } from "./tools.js";
 import { cancelTool, cleanupTool, delegateTool, resultTool, statusTool } from "./tools.js";
@@ -56,7 +57,9 @@ server.registerTool(
       model: z.string().optional().describe("Tier light|standard|heavy o provider/model literal de OpenCode"),
       run_in_background: z.boolean().optional().describe("Default true. false = esperar el resultado"),
       isolation: z.enum(["worktree"]).optional().describe("worktree = ejecutar en un git worktree temporal aislado"),
-      timeout_minutes: z.number().optional().describe("Default 30"),
+      timeout_minutes: timeoutMinutesSchema.describe(
+        "Default 30. Debe ser > 0 y <= 1440 (24h; limite de setTimeout de Node)",
+      ),
     },
   },
   (params) => wrap(() => delegateTool(params, deps))(),

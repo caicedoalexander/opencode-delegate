@@ -7,8 +7,8 @@ import { join } from "node:path";
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 const lockPath = join(projectDir, ".opencode-delegate", "serve.lock");
 
-try {
-  if (existsSync(lockPath)) {
+if (existsSync(lockPath)) {
+  try {
     const { pid } = JSON.parse(readFileSync(lockPath, "utf8"));
     if (typeof pid === "number" && pid > 0) {
       try {
@@ -18,9 +18,13 @@ try {
         // ya estaba muerto
       }
     }
+  } catch (err) {
+    console.error(`[opencode-delegate] stop-serve: ${err.message}`);
+  } finally {
+    // Always remove the lock file, even if it was corrupted.
+    // Note: PID reuse is possible if recycled by the OS; accepted risk since lock is short-lived.
     rmSync(lockPath, { force: true });
   }
-} catch (err) {
-  console.error(`[opencode-delegate] stop-serve: ${err.message}`);
 }
+
 process.exit(0);

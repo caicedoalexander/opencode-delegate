@@ -1,0 +1,176 @@
+# opencode-delegate — Diseño consolidado
+
+> Plugin de Claude Code para delegar tareas de subagente a modelos gestionados
+> por OpenCode, replicando el contrato del Agent tool nativo.
+>
+> Estado: **aprobado en brainstorming** (2026-07-04). Sustituye las preguntas
+> abiertas de `claucode-spec.md` (documento de investigación previo).
+
+## 1. Decisiones cerradas
+
+| Pendiente del spec original | Decisión |
+|---|---|
+| ¿MCP server o slash-commands+hooks? | **Híbrido: MCP server propio + `opencode serve` persistente** (HTTP+SSE, sin cold start) |
+| ¿Cómo se decide delegar? | **Autónoma + comandos**: descripciones de tools enseñan a Claude cuándo delegar; slash commands para forzarlo |
+| Alcance v1 | Delegación síncrona y background con job control + `isolation: "worktree"`. Sin review gate ni sesiones resume (post-v1) |
+| Visibilidad del progreso | Log en vivo por job (`output.log`) + tool `status` con últimas acciones. La vista nativa de subagentes no es replicable desde MCP |
+| Política de merge (worktree) | **Manual**: se reporta rama/diff y nada se integra sin decisión humana o del orquestador |
+| Multi-backend | **Solo OpenCode, sin abstracción** (YAGNI; el mapeo vive en módulo propio, extraer adaptadores después es barato) |
+| Distribución | **Publicar desde el inicio** (repo público + marketplace de plugins) |
+| Naming | **`opencode-delegate`** (repo, paquete, plugin, namespace de comandos). Nombre neutro sin "Claude"/"Anthropic", siguiendo el patrón de codex-plugin-cc |
+| Mapeo de modelos | Config con defaults + tiers (`light|standard|heavy`) + override literal `provider/model` |
+
+## 2. Arquitectura
+
+```
+Claude Code (orquestador)
+   │  tools MCP (stdio)
+   ▼
+opencode-delegate MCP server  (Node.js + TypeScript, @modelcontextprotocol/sdk)
+   │  HTTP + SSE
+   ▼
+opencode serve  (proceso persistente, lanzado y supervisado por el MCP server)
+```
+
+- El MCP server se bundlea en el plugin vía `.mcp.json` usando
+  `${CLAUDE_PLUGIN_ROOT}`.
+- En la primera llamada, el server hace health check al puerto configurado; si
+  no hay un `opencode serve` vivo, lo lanza y lo supervisa (restart con
+  backoff exponencial; máximo 1 restart automático por fallo, luego error
+  accionable).
+- Estado de jobs: en memoria en el MCP server + persistido en archivos por job
+  (reconstruible tras reinicio del server).
+
+## 3. Superficie de tools (espejo del Agent tool nativo)
+
+| Tool | Parámetros | Devuelve |
+|---|---|---|
+| `delegate` | `description` (3-5 palabras), `prompt`, `agent` (≙ `subagent_type` → flag `--agent`), `model` (tier o `provider/model`), `run_in_background` (default `true`), `isolation` (`"worktree"` opcional), `timeout_minutes` (default 30) | Background: `jobId` + `outputFile`. Síncrono: resultado final |
+| `status` | `jobId` | Estado + últimas N acciones formateadas del log |
+| `result` | `jobId` | Resultado final (`result.md`); error claro si el job sigue corriendo |
+| `cancel` | `jobId` | Aborta el job vía API de opencode serve, marca `cancelled` |
+| `cleanup` | `jobId` opcional (sin él: todos los terminados) | Elimina worktrees/ramas de jobs descartados, con confirmación |
+
+**Slash commands** delgados que invocan las tools:
+`/opencode-delegate:run|status|result|cancel|cleanup`.
+
+**Delegación autónoma:** la descripción de `delegate` instruye a Claude a
+delegar tareas mecánicas, búsquedas amplias, boilerplate y trabajo
+paralelizable barato, manteniendo en subagentes nativos el trabajo que
+requiere máxima calidad de razonamiento.
+
+## 4. Jobs y visibilidad
+
+Directorio por job: `.opencode-delegate/jobs/<jobId>/`
+
+- `meta.json` — parámetros de lanzamiento, estado
+  (`running|done|failed|cancelled`), timestamps, sessionID de OpenCode, ruta
+  del worktree si aplica.
+- `output.log` — eventos SSE formateados en vivo (`→ Read src/app.ts`,
+  `→ Bash npm test`, fragmentos de texto). Apto para `tail -f` en otra
+  terminal.
+- `result.md` — respuesta final del agente.
+
+`.opencode-delegate/` se añade al `.gitignore` del proyecto anfitrión (el
+plugin lo sugiere; no edita archivos del usuario sin confirmación).
+
+## 5. `isolation: "worktree"`
+
+1. `git worktree add <tmp> -b opencode-delegate/<jobId>` desde HEAD actual.
+2. El job corre con `--dir` apuntando al worktree.
+3. `result.md` incluye: ruta del worktree, rama, `git diff --stat` resumido.
+4. **Merge siempre manual** — decide el orquestador o el usuario.
+5. `cleanup` elimina worktree + rama con confirmación.
+6. Proyecto sin git + `isolation: "worktree"` → error explícito, sin fallback
+   silencioso.
+
+## 6. Mapeo de modelos
+
+Config `opencode-delegate.config.json` — nivel usuario
+(`~/.config/opencode-delegate/`) con override por proyecto
+(`.opencode-delegate/config.json`):
+
+```json
+{
+  "defaultModel": "opencode-go/glm-5.2",
+  "tiers": {
+    "light":    "opencode/deepseek-v4-flash-free",
+    "standard": "opencode-go/glm-5.2",
+    "heavy":    "opencode-go/qwen3.7-max"
+  },
+  "serve": { "port": 0, "reuseExisting": true }
+}
+```
+
+Resolución del parámetro `model`:
+- Contiene `/` → se usa literal como `provider/model`.
+- Es `light|standard|heavy` → se resuelve por la tabla de tiers.
+- Ausente → `defaultModel`.
+- Modelo configurado inexistente en `opencode models` → warning explícito en
+  la primera llamada (no error fatal: la lista puede variar por auth).
+
+Los valores del ejemplo reflejan los modelos disponibles en la instalación de
+referencia (OpenCode Zen); se ajustan por config sin tocar código.
+
+## 7. Manejo de errores
+
+- `opencode serve` caído → 1 restart automático con backoff; segundo fallo →
+  error accionable ("verifica `opencode auth list`", puerto ocupado, etc.).
+- Timeout por job (`timeout_minutes`, default 30) → estado `failed`, log
+  preservado.
+- Validación de parámetros con JSON Schema en el borde MCP.
+- Nada de interpolación de strings hacia shell: rutas de worktree y `--dir` se
+  construyen con APIs (`child_process.spawn` con array de args).
+- Errores del agente delegado (crash del modelo, auth) se reflejan en
+  `meta.json` y en el mensaje de la tool, nunca se tragan en silencio.
+
+## 8. Testing
+
+- **Unit (Vitest):** resolución de modelos/tiers, parser de eventos SSE,
+  registro de jobs (FS temporal), construcción de worktrees (repo git
+  temporal).
+- **Integración:** contra `opencode serve` real con modelos `*-free` (sin
+  costo): lanzar job, leer SSE, cancelar, timeout.
+- **E2E manual:** sesión real de Claude Code con el plugin instalado —
+  delegación síncrona, background con `status`/`cancel`, job con worktree.
+- Cobertura objetivo: 80% de la lógica del server.
+
+## 9. Estructura del repo
+
+```
+opencode-delegate/
+├── .claude-plugin/plugin.json
+├── .mcp.json
+├── commands/{run,status,result,cancel,cleanup}.md
+├── server/
+│   ├── src/
+│   │   ├── index.ts          # bootstrap MCP server + registro de tools
+│   │   ├── serve-manager.ts  # ciclo de vida de opencode serve
+│   │   ├── jobs.ts           # registro/persistencia de jobs
+│   │   ├── worktree.ts       # creación/limpieza de worktrees
+│   │   ├── models.ts         # resolución tiers/config
+│   │   └── sse-parser.ts     # SSE → eventos formateados
+│   └── test/
+├── docs/superpowers/specs/
+└── README.md
+```
+
+## 10. Fuera de alcance (v1)
+
+- Sesiones OpenCode persistentes (`--resume`/`--fresh`).
+- Review gate / adversarial review (hooks Stop).
+- Multi-backend (Codex, Gemini CLI...).
+- `isolation: "remote"` (infraestructura propia de Anthropic, sin
+  equivalente).
+- Réplica exacta de la vista nativa de progreso de subagentes (imposible desde
+  MCP; se aproxima con log + `status`).
+
+## 11. Riesgos conocidos
+
+- **API de `opencode serve` no validada aún** contra esta versión (1.17.8):
+  el primer paso de implementación es un spike que confirme endpoints y
+  formato SSE reales.
+- Plugin de referencia (`tasict/opencode-plugin-cc`) tiene adopción mínima;
+  se usa como referencia de lectura, no como base de código.
+- Publicación pública: revisar lineamientos de marca de Anthropic antes del
+  primer release (el nombre neutro ya mitiga lo principal).

@@ -26,6 +26,9 @@ export interface JobMeta {
  * Chequea si un proceso sigue vivo sin matarlo (`process.kill(pid, 0)`).
  * ESRCH -> el proceso no existe (muerto). EPERM -> existe pero sin permiso
  * para señalizarlo (vivo). Sin excepcion -> vivo.
+ * Riesgo aceptado: un PID reciclado por otro proceso hace parecer vivo a un
+ * dueño muerto (el job queda "running" hasta un `cancel` manual) — misma
+ * clase de riesgo asumida en el lock de serve, ventana corta en la práctica.
  */
 function isProcessAlive(pid: number): boolean {
   try {

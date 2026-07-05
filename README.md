@@ -166,6 +166,9 @@ Los valores del ejemplo reflejan los modelos de la instalación de referencia
 - **Job atascado:** `status <jobId>` muestra las últimas acciones; `cancel`
   aborta la sesión en opencode serve y marca el job `cancelled`. El log
   siempre se preserva.
+- **Job atascado en `running` cuya sesión dueña ya murió:** el recovery solo
+  corre al arrancar un MCP server; si otra sesión sigue viva no lo tocará.
+  Usa `cancel <jobId>` para cerrarlo manualmente.
 
 ## Verificación E2E (checklist manual — pendiente de ejecución humana)
 

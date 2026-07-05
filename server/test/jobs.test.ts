@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,18 +44,53 @@ describe("JobStore", () => {
     expect(store.readResult(job.id)).toBe("# listo");
   });
 
-  it("recover marca como failed los jobs running (segunda instancia = post-crash)", () => {
+  it("createJob estampa ownerPid con el pid del proceso actual", () => {
+    const store = makeStore();
+    const job = store.createJob(INIT);
+    expect(job.ownerPid).toBe(process.pid);
+  });
+
+  it("recover no toca un job running cuyo ownerPid sigue vivo (sesion concurrente)", () => {
     const dir = mkdtempSync(join(tmpdir(), "ocd-jobs-"));
     const store1 = new JobStore(dir);
-    const running = store1.createJob(INIT);
+    const running = store1.createJob(INIT); // ownerPid = process.pid (este proceso de test, vivo)
     const done = store1.createJob(INIT);
     store1.finish(done.id, "done");
 
     const store2 = new JobStore(dir);
     const { markedFailed } = store2.recover();
+    expect(markedFailed).toEqual([]);
+    expect(store2.readMeta(running.id)).toEqual(running);
+    expect(store2.readMeta(done.id).state).toBe("done");
+  });
+
+  it("recover marca failed un job running cuyo ownerPid ya murio", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocd-jobs-"));
+    const store1 = new JobStore(dir);
+    const running = store1.createJob(INIT);
+
+    // PID confiablemente muerto: proceso hijo de corta vida ya finalizado.
+    const child = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
+    const deadPid = child.pid!;
+    store1.writeMeta({ ...store1.readMeta(running.id), ownerPid: deadPid });
+
+    const store2 = new JobStore(dir);
+    const { markedFailed } = store2.recover();
     expect(markedFailed).toEqual([running.id]);
     expect(store2.readMeta(running.id).state).toBe("failed");
-    expect(store2.readMeta(done.id).state).toBe("done");
+  });
+
+  it("recover marca failed un job running con meta legacy sin ownerPid (compat hacia atras)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocd-jobs-"));
+    const store1 = new JobStore(dir);
+    const running = store1.createJob(INIT);
+    const { ownerPid: _ownerPid, ...legacyMeta } = store1.readMeta(running.id);
+    store1.writeMeta(legacyMeta as typeof running);
+
+    const store2 = new JobStore(dir);
+    const { markedFailed } = store2.recover();
+    expect(markedFailed).toEqual([running.id]);
+    expect(store2.readMeta(running.id).state).toBe("failed");
   });
 
   it("readMeta de job inexistente lanza error claro", () => {

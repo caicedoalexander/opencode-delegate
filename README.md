@@ -45,7 +45,7 @@ cd server && npm install && npm run build
 
 # 2. Registrar el repo como marketplace local e instalar el plugin
 claude plugin marketplace add <ruta-al-repo-de-opencode-delegate>
-claude plugin install opencode-delegate@opencode-delegate-local
+claude plugin install opencode-delegate@opencode-delegate
 ```
 
 Tras instalar, Claude Code levanta el MCP server del plugin automáticamente;

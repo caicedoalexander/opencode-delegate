@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIN_NODE_MAJOR = 20;
-const MARKETPLACE = "opencode-delegate-local";
+const MARKETPLACE = "opencode-delegate";
 const PLUGIN = "opencode-delegate";
 
 function step(msg) {

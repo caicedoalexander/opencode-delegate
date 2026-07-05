@@ -1,5 +1,5 @@
 {
-  "name": "opencode-delegate-local",
+  "name": "opencode-delegate",
   "owner": { "name": "Alexander Caicedo" },
   "plugins": [
     {

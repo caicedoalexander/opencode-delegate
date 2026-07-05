@@ -78,6 +78,11 @@ async function runJob(job: JobMeta, client: OpencodeClientLike, deps: ToolDeps, 
     .subscribe((evt) => {
       const parsed = parseServerEvent(evt);
       if (parsed.sessionId !== sessionId) return;
+      // Solo se consume kind:"tool" aqui: el parser tambien emite "text",
+      // "done" y "error" (contrato general de parseServerEvent), pero en v1
+      // ningun consumidor los usa todavia — el texto final llega por el
+      // valor de retorno de sendMessage, no por este stream. Futuros
+      // consumidores podrian aprovechar esos otros kinds mas adelante.
       if (parsed.kind !== "tool" || !parsed.line) return;
       if (parsed.line === lastToolLine) return; // supresion de duplicados consecutivos
       lastToolLine = parsed.line;

@@ -141,6 +141,15 @@ Los valores del ejemplo reflejan los modelos de la instalación de referencia
 - Proyecto sin git + `isolation: "worktree"` → error explícito, sin fallback.
 - Fuera de alcance v1: sesiones OpenCode persistentes (resume), review gate,
   multi-backend, `isolation: "remote"`.
+- **Multi-sesión comparte estado.** Dos sesiones de Claude Code trabajando
+  sobre el mismo proyecto comparten `.opencode-delegate/` y el mismo
+  `opencode serve` (puerto 4573). El hook `SessionEnd` de una sesión puede
+  detener el `opencode serve` del que depende un job de la otra sesión,
+  provocando un fallo de red/conexión en ese job.
+- **Recovery respeta jobs vivos de otras sesiones.** Al arrancar, `recover()`
+  solo marca `failed` un job `running` si el proceso dueño (`ownerPid`) ya
+  murió; un job cuyo dueño sigue vivo (otra sesión concurrente) se deja
+  intacto entre reinicios.
 
 ## Troubleshooting
 

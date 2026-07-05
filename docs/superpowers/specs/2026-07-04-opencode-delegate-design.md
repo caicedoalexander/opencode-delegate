@@ -95,10 +95,13 @@ Directorio por job: `.opencode-delegate/jobs/<jobId>/`
 - `meta.json` — parámetros de lanzamiento, estado
   (`running|done|failed|cancelled`), timestamps, sessionID de OpenCode, ruta
   del worktree si aplica.
-- `output.log` — eventos SSE formateados en vivo (`→ Read src/app.ts`,
-  `→ Bash npm test`, fragmentos de texto). Apto para `tail -f` en otra
-  terminal.
-- `result.md` — respuesta final del agente.
+- `output.log` — en v1 solo registra acciones de tool en vivo (`→ Read
+  src/app.ts`, `→ Bash npm test`); el parser SSE tambien emite eventos de
+  texto (`kind: "text"`) pero no estan cableados a ningun consumidor todavia,
+  asi que **no** hay streaming incremental de texto en este log. Apto para
+  `tail -f` en otra terminal.
+- `result.md` — respuesta final del agente (el texto completo del turno
+  llega aqui, no a `output.log`).
 
 `.opencode-delegate/` se añade al `.gitignore` del proyecto anfitrión (el
 plugin lo sugiere; no edita archivos del usuario sin confirmación).
@@ -129,7 +132,7 @@ Config `opencode-delegate.config.json` — nivel usuario
     "standard": "opencode-go/glm-5.2",
     "heavy":    "opencode-go/qwen3.7-max"
   },
-  "serve": { "port": 0, "reuseExisting": true }
+  "serve": { "port": 4573, "reuseExisting": true }
 }
 ```
 

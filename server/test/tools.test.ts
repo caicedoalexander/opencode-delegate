@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -308,5 +308,37 @@ describe("delegateTool isolation: worktree", () => {
     expect(meta.state).toBe("failed");
     expect(meta.error).toMatch(/no es un repositorio git/);
     expect(meta.worktreePath).toBeUndefined();
+  });
+});
+
+describe("validacion de jobId en el borde de las tools", () => {
+  const EVIL_ID = "../../../../etc/passwd";
+
+  it("status rechaza jobId invalido sin tocar el filesystem", async () => {
+    const client = new FakeClient();
+    const deps = makeDeps(client);
+    await expect(statusTool({ jobId: EVIL_ID }, deps)).rejects.toThrow(/jobId invalido/);
+    expect(existsSync(join(deps.projectDir, ".opencode-delegate", "jobs", EVIL_ID))).toBe(false);
+  });
+
+  it("result rechaza jobId invalido sin tocar el filesystem", async () => {
+    const client = new FakeClient();
+    const deps = makeDeps(client);
+    await expect(resultTool({ jobId: EVIL_ID }, deps)).rejects.toThrow(/jobId invalido/);
+    expect(existsSync(join(deps.projectDir, ".opencode-delegate", "jobs", EVIL_ID))).toBe(false);
+  });
+
+  it("cancel rechaza jobId invalido sin tocar el filesystem", async () => {
+    const client = new FakeClient();
+    const deps = makeDeps(client);
+    await expect(cancelTool({ jobId: EVIL_ID }, deps)).rejects.toThrow(/jobId invalido/);
+    expect(existsSync(join(deps.projectDir, ".opencode-delegate", "jobs", EVIL_ID))).toBe(false);
+  });
+
+  it("cleanup rechaza jobId invalido sin tocar el filesystem", async () => {
+    const client = new FakeClient();
+    const deps = makeDeps(client);
+    await expect(cleanupTool({ jobId: EVIL_ID }, deps)).rejects.toThrow(/jobId invalido/);
+    expect(existsSync(join(deps.projectDir, ".opencode-delegate", "jobs", EVIL_ID))).toBe(false);
   });
 });

@@ -44,6 +44,20 @@ export interface DelegateParams {
 const DEFAULT_TIMEOUT_MINUTES = 30;
 const STATUS_TAIL_LINES = 15;
 
+// Formato real de id generado por JobStore.createJob (jobs.ts):
+// `ocd-${Date.now().toString(36)}-${randomBytes(2).toString("hex")}`.
+const JOB_ID_PATTERN = /^ocd-[0-9a-z]+-[0-9a-f]{4}$/;
+
+/**
+ * Valida el jobId en el borde de la tool ANTES de cualquier acceso a
+ * filesystem: `jobId` llega directo del caller MCP y JobStore lo usa en
+ * `join(baseDir, id)` sin sanitizar, asi que un valor como "../../otro" podria
+ * escapar del directorio de jobs.
+ */
+function assertValidJobId(id: string): void {
+  if (!JOB_ID_PATTERN.test(id)) throw new Error(`jobId invalido: ${id}`);
+}
+
 interface JobOutcome {
   meta: JobMeta;
   resultText: string;
@@ -188,6 +202,7 @@ export async function delegateTool(params: DelegateParams, deps: ToolDeps): Prom
 }
 
 export async function statusTool(params: { jobId: string }, deps: ToolDeps): Promise<string> {
+  assertValidJobId(params.jobId);
   const meta = deps.jobs.readMeta(params.jobId);
   const tail = deps.jobs.readLogTail(params.jobId, STATUS_TAIL_LINES);
   return [
@@ -204,6 +219,7 @@ export async function statusTool(params: { jobId: string }, deps: ToolDeps): Pro
 }
 
 export async function resultTool(params: { jobId: string }, deps: ToolDeps): Promise<string> {
+  assertValidJobId(params.jobId);
   const meta = deps.jobs.readMeta(params.jobId);
   if (meta.state === "running") {
     throw new Error(`El job ${meta.id} sigue corriendo. Usa status para ver el progreso o cancel para abortarlo.`);
@@ -213,6 +229,7 @@ export async function resultTool(params: { jobId: string }, deps: ToolDeps): Pro
 }
 
 export async function cancelTool(params: { jobId: string }, deps: ToolDeps): Promise<string> {
+  assertValidJobId(params.jobId);
   const meta = deps.jobs.readMeta(params.jobId);
   if (meta.state !== "running") return `El job ${meta.id} ya estaba en estado ${meta.state}.`;
   if (meta.opencodeSessionId) {
@@ -227,6 +244,7 @@ export async function cancelTool(params: { jobId: string }, deps: ToolDeps): Pro
 }
 
 export async function cleanupTool(params: { jobId?: string }, deps: ToolDeps): Promise<string> {
+  if (params.jobId !== undefined) assertValidJobId(params.jobId);
   const targets = params.jobId
     ? [deps.jobs.readMeta(params.jobId)]
     : deps.jobs.list().filter((m) => m.state !== "running" && m.worktreePath);

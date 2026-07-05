@@ -95,6 +95,33 @@ Slash commands delgados que invocan las tools:
 | `/opencode-delegate:cancel [jobId]` | `/opencode-delegate:cancel ocd-abc123-ff00` |
 | `/opencode-delegate:cleanup [jobId]` | `/opencode-delegate:cleanup` (todos los terminados, con confirmación) |
 
+## Subagente delegador
+
+El plugin también registra el subagente `opencode-delegate` (visible en
+`/agents`): un wrapper delgado que el Agent tool nativo puede invocar y que
+reenvía la tarea a la tool `delegate`. Así el orquestador puede delegar a
+OpenCode usando su vocabulario nativo de subagentes, sin instrucciones
+adicionales.
+
+## Recomendación para tu CLAUDE.md
+
+Para que Claude delegue de forma proactiva, añade esto al `CLAUDE.md` de tu
+proyecto (o al global `~/.claude/CLAUDE.md`) — el instalador ofrece añadirlo
+por ti:
+
+```markdown
+<!-- opencode-delegate:start -->
+## Delegación a OpenCode
+
+Para tareas mecánicas (boilerplate, renombrados masivos, migraciones
+repetitivas), búsquedas amplias de código, generación de tests rutinarios y
+trabajo paralelizable de bajo riesgo, prefiere delegar a modelos de OpenCode:
+usa la tool `delegate` del plugin opencode-delegate o su subagente
+`opencode-delegate`. Reserva los subagentes nativos para trabajo que exige
+máximo razonamiento (arquitectura, debugging complejo, seguridad).
+<!-- opencode-delegate:end -->
+```
+
 ## Mapeo: Agent tool nativo → opencode-delegate
 
 | Agent tool nativo | opencode-delegate (`delegate`) |

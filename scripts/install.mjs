@@ -4,14 +4,29 @@
 // Linux); requiere el mismo Node 20+ que ya exige el plugin.
 // Uso: node scripts/install.mjs   (desde la raiz del repo)
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIN_NODE_MAJOR = 20;
 const MARKETPLACE = "opencode-delegate";
 const PLUGIN = "opencode-delegate";
+
+const START_MARK = "<!-- opencode-delegate:start -->";
+const END_MARK = "<!-- opencode-delegate:end -->";
+const CLAUDE_MD_SNIPPET = `${START_MARK}
+## Delegación a OpenCode
+
+Para tareas mecánicas (boilerplate, renombrados masivos, migraciones
+repetitivas), búsquedas amplias de código, generación de tests rutinarios y
+trabajo paralelizable de bajo riesgo, prefiere delegar a modelos de OpenCode:
+usa la tool \`delegate\` del plugin opencode-delegate o su subagente
+\`opencode-delegate\`. Reserva los subagentes nativos para trabajo que exige
+máximo razonamiento (arquitectura, debugging complejo, seguridad).
+${END_MARK}`;
 
 function step(msg) {
   console.log(`\n==> ${msg}`);
@@ -105,7 +120,49 @@ if (install.status === 0) {
   fail(`\`${install.pretty}\` fallo:\n${install.stdout}${install.stderr}`);
 }
 
-// --- 4. Listo ----------------------------------------------------------------
+// --- 4. Recomendacion en ~/.claude/CLAUDE.md (opcional) ---------------------
+// Idempotente: el bloque va delimitado por marcadores; re-ejecutar actualiza
+// el bloque existente en vez de duplicarlo.
+async function offerClaudeMdSnippet() {
+  if (process.argv.includes("--no-claude-md")) return;
+  const forced = process.argv.includes("--claude-md");
+  if (!forced && !process.stdin.isTTY) {
+    console.log("  (stdin no interactivo: omitiendo CLAUDE.md; usa --claude-md para forzarlo)");
+    return;
+  }
+
+  const claudeMdPath = join(homedir(), ".claude", "CLAUDE.md");
+  if (!forced) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = (
+      await rl.question(`  ¿Añadir la recomendación de delegación a ${claudeMdPath}? (s/N) `)
+    ).trim();
+    rl.close();
+    if (!/^s/i.test(answer)) {
+      console.log("  omitido (puedes copiar el snippet desde el README cuando quieras)");
+      return;
+    }
+  }
+
+  const current = existsSync(claudeMdPath) ? readFileSync(claudeMdPath, "utf8") : "";
+  let next;
+  if (current.includes(START_MARK) && current.includes(END_MARK)) {
+    const before = current.slice(0, current.indexOf(START_MARK));
+    const after = current.slice(current.indexOf(END_MARK) + END_MARK.length);
+    next = `${before}${CLAUDE_MD_SNIPPET}${after}`;
+    console.log(`  bloque existente actualizado en ${claudeMdPath}`);
+  } else {
+    next = current ? `${current.replace(/\n*$/, "\n\n")}${CLAUDE_MD_SNIPPET}\n` : `${CLAUDE_MD_SNIPPET}\n`;
+    console.log(`  snippet añadido a ${claudeMdPath}`);
+  }
+  mkdirSync(dirname(claudeMdPath), { recursive: true });
+  writeFileSync(claudeMdPath, next);
+}
+
+step("Recomendacion para CLAUDE.md");
+await offerClaudeMdSnippet();
+
+// --- 5. Listo ----------------------------------------------------------------
 step("Instalacion completa");
 console.log(`
 Siguientes pasos:

@@ -1,0 +1,11 @@
+{
+  "name": "opencode-delegate-local",
+  "owner": { "name": "Alexander Caicedo" },
+  "plugins": [
+    {
+      "name": "opencode-delegate",
+      "source": "./",
+      "description": "Delegate subagent tasks from Claude Code to OpenCode-managed models via MCP"
+    }
+  ]
+}

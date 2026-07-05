@@ -4,7 +4,8 @@
 > por OpenCode, replicando el contrato del Agent tool nativo.
 >
 > Estado: **aprobado en brainstorming** (2026-07-04). Sustituye las preguntas
-> abiertas de `claucode-spec.md` (documento de investigación previo).
+> abiertas de [`docs/research/claucode-spec.md`](../../research/claucode-spec.md)
+> (documento de investigación previo).
 
 ## 1. Decisiones cerradas
 

@@ -168,7 +168,18 @@ export async function delegateTool(params: DelegateParams, deps: ToolDeps): Prom
     if (meta.state !== "done") throw new Error(meta.error ?? "el job fallo sin detalle");
     return resultText;
   } catch (err) {
-    deps.jobs.finish(job.id, "failed", (err as Error).message);
+    // No pisar un estado terminal (done/failed/cancelled) ya escrito por
+    // runJob o por un cancelTool concurrente: solo marcamos failed si el job
+    // seguia "running" cuando llegamos aqui (p. ej. fallo antes de runJob,
+    // como ensureRunning/createSession).
+    const current = deps.jobs.readMeta(job.id);
+    if (current.state === "running") {
+      deps.jobs.finish(job.id, "failed", (err as Error).message);
+      throw err;
+    }
+    if (current.state === "cancelled") {
+      throw new Error(`El job ${job.id} fue cancelado`);
+    }
     throw err;
   }
 }

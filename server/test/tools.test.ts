@@ -172,6 +172,26 @@ describe("delegateTool sincrono", () => {
     );
     expect(out).toMatch(/[Tt]imeout/);
     expect(client.aborted).toContain("ses_fake");
+    const jobId = deps.jobs.list()[0].id;
+    const meta = deps.jobs.readMeta(jobId);
+    expect(meta.state).toBe("failed");
+    expect(meta.error).toMatch(/^Timeout tras/);
+  });
+
+  it("cancel-then-settle en sincrono: el catch no pisa 'cancelled' con 'failed' y rechaza con mensaje de cancelacion", async () => {
+    const client = new FakeClient();
+    const deps = makeDeps(client);
+    const pending = delegateTool({ ...PARAMS, run_in_background: false }, deps).catch((e: Error) => e.message);
+    await tick();
+    const jobId = deps.jobs.list()[0].id;
+    // cancelTool aborta la sesion, lo que en FakeClient dispara el rechazo
+    // tardio de sendMessage en vuelo (mismo mecanismo que el abort real).
+    await cancelTool({ jobId }, deps);
+    const out = await pending;
+    expect(out).toMatch(/cancelad/i);
+    const meta = deps.jobs.readMeta(jobId);
+    expect(meta.state).toBe("cancelled");
+    expect(meta.error).toBeUndefined();
   });
 });
 

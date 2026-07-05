@@ -26,7 +26,18 @@ Requisitos:
   `opencode auth list`).
 - Node.js 20+.
 
-Pasos:
+### Opción A: automática (recomendada)
+
+Desde la raíz del repo clonado (funciona en Windows, macOS y Linux):
+
+```bash
+node scripts/install.mjs
+```
+
+El script verifica los prerequisitos, compila el server MCP y registra e
+instala el plugin en Claude Code.
+
+### Opción B: manual
 
 ```bash
 # 1. Compilar el server MCP (una vez, desde la raíz del repo)

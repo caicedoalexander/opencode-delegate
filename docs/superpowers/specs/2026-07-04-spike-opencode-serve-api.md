@@ -98,7 +98,7 @@ POST /session?directory=C%3A%5CUsers%5CAlexander%5CDocuments%5Cdev%5Cclaucode
 ```
 Devuelve la misma forma, con `directory` reflejando el valor pasado.
 
-Body aceptado por `POST /session` (según schema OpenAPI, todos opcionales, `additionalProperties: false`):
+Body aceptado por `POST /session` (según schema OpenAPI leído de `/doc`, no verificado empíricamente; todos opcionales, `additionalProperties: false`):
 ```json
 {
   "parentID": "string (patrón ^ses)",
@@ -123,7 +123,7 @@ Nota importante: en `POST /session` el modelo se referencia como `{ id, provider
 
 - El body coincide bien con lo asumido: `parts` (requerido, array de `TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput`), `model: { providerID, modelID }` (ambos requeridos si se envía `model`), `agent` (string, top-level, opcional — nombres válidos: `build`, `plan`, `explore`, `general`, obtenibles de `GET /agent`).
 - Campos adicionales soportados que el plan no mencionaba: `messageID`, `noReply` (boolean), `tools` (mapa de nombre→boolean para habilitar/deshabilitar tools), `format` (`OutputFormat`), `system` (system prompt override), `variant`.
-- **`GET /doc` es explícito: `additionalProperties: false`** — hay que enviar exactamente estas claves, cualquier clave extra puede ser rechazada.
+- **`GET /doc` es explícito: `additionalProperties: false`** (leído del schema, no verificado empíricamente) — hay que enviar exactamente estas claves, cualquier clave extra puede ser rechazada.
 - **Es BLOQUEANTE**, no asíncrono. La llamada HTTP `POST /session/{id}/message` no retorna hasta que el turno del asistente termina (o es abortado). El body de la respuesta HTTP 200 contiene el mensaje completo (`info`) y todas sus `parts` ya generadas.
 
 Request real:
@@ -165,7 +165,7 @@ Si no se especifica `agent` en el request, la sesión usa el agente por defecto 
 
 ---
 
-## Formato SSE (tipos de evento con ejemplo real cada uno)
+## Formato SSE (con ejemplo real de los eventos relevantes para opencode-delegate)
 
 **Supuesto del plan:** `GET /event` stream global, `data: {json}\n\n`, tipos como `message.part.updated` (con `properties.part` conteniendo `sessionID`, `type: "tool"|"text"`, nombre de tool, `state.status/input`), `session.idle` (señal de fin), `session.error`.
 
@@ -190,6 +190,8 @@ Tipos de evento observados en las 3 sesiones de prueba (lista real, no exhaustiv
 - `session.diff` — diffs de archivos tocados durante el turno (vacío en nuestras pruebas porque no se modificaron archivos).
 - `session.idle` — **señal real de fin de turno**, confirmado.
 - `session.error` — confirmado, se emite en aborts/errores.
+
+**Nota importante sobre cobertura de ejemplos:** de los ~15 tipos enumerados arriba, **solo 5 disponen de JSON capturado empíricamente**: `message.part.updated` (dos variantes), `message.part.delta`, `session.idle`, `session.error`. Los demás tipos (`server.connected`, `server.heartbeat`, `plugin.added`, `catalog.updated`, `integration.updated`, `reference.updated`, `session.updated`, `session.status`, `session.next.agent.switched`, `session.next.model.switched`, `message.updated`, `session.diff`) fueron observados por su nombre solamente durante la ejecución; su shape de payload no se capturó. El parser en `sse-parser.ts` debe manejarlos como `kind: "other"` e ignorarlos o almacenarlos genéricamente. **Si en el futuro se requiere consumir el payload de estos eventos, es necesario volver a capturar ejemplos contra una sesión que dispare los eventos pertinentes.** (Los tipos con ejemplos son suficientes para el flujo delegado básico: streaming incremental de texto/razonamiento, tool calls con estado, y señal de fin de turno.)
 
 ### Ejemplo real: `message.part.updated` con part de texto
 ```json
@@ -305,6 +307,7 @@ La API **no difiere radicalmente** de lo asumido en su superficie general: los e
 ## ¿Es este documento suficiente para implementar el cliente sin correr `opencode`?
 
 Sí, con las siguientes salvedades explícitas:
+- **Cobertura incompleta de eventos SSE.** De los ~15 tipos de evento enumerados, solo 5 tienen ejemplos JSON capturados (`message.part.updated` x2 variantes, `message.part.delta`, `session.idle`, `session.error`). Los demás tipos fueron observados por nombre solamente. El parser debe manejar eventos sin ejemplo como `kind: "other"` e ignorarlos o guardarlos genéricamente. Si la implementación futura requiere consumir estos eventos, será necesario volver a ejecutar capturas contra sesiones que disparen esos tipos específicos.
 - El shape completo de `Session`, `Message` y `Part` (todas las variantes de `part.type`) no se transcribió íntegro desde el OpenAPI (solo los campos vistos en la práctica); para tipos TypeScript exhaustivos conviene además consultar `GET /doc` en el momento de implementar y extraer `components.schemas.Session` / `Message` / `Part` completos.
 - `POST /session/{id}/prompt_async` no fue probado; si se decide usarlo en vez de la variante síncrona, requiere un mini-spike adicional antes de codificarlo.
 - El comportamiento ante un `agent` inválido o un `model` inexistente no fue probado (errores 400 con qué shape exacto) — se infiere de `BadRequestError`/`InvalidRequestError` en el spec pero no se capturó un ejemplo real.

@@ -185,6 +185,21 @@ describe("OpencodeClient", () => {
     expect(reqs.some((r) => r.url === "/event")).toBe(true);
   });
 
+  it("subscribe rechaza ante error de red sin abort", async () => {
+    const reqs: Recorded[] = [];
+    const base = await startFake(reqs, {
+      onEventStream: (res) => {
+        res.write('data: {"type":"server.heartbeat"}\n\n');
+        res.destroy();
+      },
+    });
+    const client = new OpencodeClient(base);
+    const ctrl = new AbortController();
+    const sub = client.subscribe(() => {}, ctrl.signal);
+    await expect(sub).rejects.toThrow();
+    expect(reqs.some((r) => r.url === "/event")).toBe(true);
+  });
+
   it("respuesta no-2xx lanza error con status y cuerpo", async () => {
     const reqs: Recorded[] = [];
     server?.close();

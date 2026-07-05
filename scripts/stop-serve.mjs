@@ -23,7 +23,12 @@ if (existsSync(lockPath)) {
   } finally {
     // Always remove the lock file, even if it was corrupted.
     // Note: PID reuse is possible if recycled by the OS; accepted risk since lock is short-lived.
-    rmSync(lockPath, { force: true });
+    try {
+      rmSync(lockPath, { force: true });
+    } catch (err) {
+      // force:true solo suprime ENOENT; EPERM/EBUSY (AV, read-only) no deben romper el exit-0.
+      console.error(`[opencode-delegate] stop-serve rmSync: ${err.message}`);
+    }
   }
 }
 

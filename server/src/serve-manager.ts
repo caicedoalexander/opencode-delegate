@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -23,6 +23,8 @@ export class ServeManager {
   readonly lockPath: string;
   private readonly logPath: string;
   private child: ChildProcess | undefined;
+  /** true si esta instancia fue la que spawneo el proceso (independiente de si sigue vivo). */
+  private ownsSpawn = false;
 
   constructor(private readonly opts: ServeManagerOptions) {
     mkdirSync(opts.stateDir, { recursive: true });
@@ -47,7 +49,7 @@ export class ServeManager {
   async ensureRunning(): Promise<ServeInfo> {
     if (this.opts.reuseExisting && (await this.isHealthy())) {
       const lock = this.readLock();
-      return { baseUrl: this.baseUrl(), pid: lock?.pid ?? -1, ownedByUs: this.child !== undefined };
+      return { baseUrl: this.baseUrl(), pid: lock?.pid ?? -1, ownedByUs: this.ownsSpawn };
     }
     return this.spawnServe();
   }
@@ -65,8 +67,12 @@ export class ServeManager {
     const bin = this.opts.opencodeBin ?? "opencode";
     const args = [...(this.opts.extraArgsPrefix ?? []), "serve", "--port", String(this.opts.port)];
     const logFd = openSync(this.logPath, "a");
+    // `spawn` duplica el fd para el hijo (tanto en POSIX como en Windows) antes de retornar,
+    // asi que podemos cerrar nuestra copia inmediatamente sin afectar el logging del proceso hijo.
     const child = spawn(bin, args, { stdio: ["ignore", logFd, logFd] });
+    closeSync(logFd);
     this.child = child;
+    this.ownsSpawn = true;
     writeFileSync(this.lockPath, JSON.stringify({ pid: child.pid, port: this.opts.port, startedAt: new Date().toISOString() }));
 
     const deadline = Date.now() + (this.opts.startupTimeoutMs ?? 15000);
@@ -87,10 +93,11 @@ export class ServeManager {
   }
 
   async stopIfOwned(): Promise<void> {
+    if (!this.ownsSpawn) return;
     if (this.child && this.child.exitCode === null) {
       this.child.kill();
-      this.child = undefined;
     }
+    this.child = undefined;
     rmSync(this.lockPath, { force: true });
   }
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,4 +71,19 @@ setInterval(() => {}, 1000);`,
     });
     await expect(mgr.ensureRunning()).rejects.toThrow(/serve\.log/);
   }, 20000);
+
+  it("stopIfOwned no borra el lock de un serve reutilizado (no spawneado por esta instancia)", async () => {
+    const dir = stateDir();
+    const port = await listen((_req, res) => res.writeHead(200).end("{}"));
+    const lockPath = join(dir, "serve.lock");
+    writeFileSync(lockPath, JSON.stringify({ pid: 999999, port, startedAt: new Date().toISOString() }));
+
+    const mgr = new ServeManager({ stateDir: dir, port, reuseExisting: true, opencodeBin: "no-existe" });
+    const info = await mgr.ensureRunning();
+    expect(info.ownedByUs).toBe(false);
+
+    await mgr.stopIfOwned();
+
+    expect(existsSync(lockPath)).toBe(true);
+  });
 });

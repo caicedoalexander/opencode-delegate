@@ -141,8 +141,15 @@ En background, `delegate` devuelve `jobId` + `outputFile` (apto para
 
 ## Configuración de modelos
 
-Config a nivel usuario (`~/.config/opencode-delegate/config.json`) con
-override por proyecto (`.opencode-delegate/config.json`):
+**No se necesita ningún archivo para empezar**: el server trae defaults
+compilados (los del ejemplo de abajo). Crea un config solo para
+sobreescribirlos, en cualquiera de estas dos rutas (el merge es parcial:
+basta con declarar lo que cambias):
+
+- Nivel usuario: `~/.config/opencode-delegate/config.json`
+  (Windows: `C:\Users\<usuario>\.config\opencode-delegate\config.json`)
+- Override por proyecto: `.opencode-delegate/config.json` (gana sobre el de
+  usuario)
 
 ```json
 {

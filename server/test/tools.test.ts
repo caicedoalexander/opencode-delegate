@@ -62,6 +62,15 @@ class FakeClient implements OpencodeClientLike {
   }
 }
 
+/** Variante de FakeClient cuyo abort() falla (ej. red caida) ademas de resolver/rechazar el turno en vuelo. */
+class AbortFailsClient extends FakeClient {
+  async abort(sessionId: string): Promise<void> {
+    this.aborted.push(sessionId);
+    this.rejectSend(new Error("MessageAbortedError"));
+    throw new Error("red caida");
+  }
+}
+
 function makeDeps(client: FakeClient): ToolDeps {
   const projectDir = mkdtempSync(join(tmpdir(), "ocd-tools-"));
   return makeDepsWithProjectDir(client, projectDir);
@@ -340,5 +349,30 @@ describe("validacion de jobId en el borde de las tools", () => {
     const deps = makeDeps(client);
     await expect(cleanupTool({ jobId: EVIL_ID }, deps)).rejects.toThrow(/jobId invalido/);
     expect(existsSync(join(deps.projectDir, ".opencode-delegate", "jobs", EVIL_ID))).toBe(false);
+  });
+});
+
+describe("aborts fallidos no se tragan en silencio", () => {
+  it("cancelTool registra en el log si abort() falla, pero igual marca cancelled", async () => {
+    const client = new AbortFailsClient();
+    const deps = makeDeps(client);
+    const out = await delegateTool(PARAMS, deps);
+    const jobId = extractJobId(out);
+    await tick();
+    const msg = await cancelTool({ jobId }, deps);
+    expect(msg).toContain(jobId);
+    expect(deps.jobs.readMeta(jobId).state).toBe("cancelled");
+    expect(deps.jobs.readLogTail(jobId, 20).some((l) => l.includes("aviso: abort fallo"))).toBe(true);
+  });
+
+  it("timeout registra en el log si el abort inducido por el timeout falla", async () => {
+    const client = new AbortFailsClient();
+    const deps = makeDeps(client);
+    const out = await delegateTool({ ...PARAMS, run_in_background: false, timeout_minutes: 0.001 }, deps).catch(
+      (e: Error) => e.message,
+    );
+    expect(out).toMatch(/[Tt]imeout/);
+    const jobId = deps.jobs.list()[0].id;
+    expect(deps.jobs.readLogTail(jobId, 20).some((l) => l.includes("aviso: abort fallo"))).toBe(true);
   });
 });

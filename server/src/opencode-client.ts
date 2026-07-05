@@ -67,6 +67,14 @@ export class OpencodeClient {
     return text ? JSON.parse(text) : {};
   }
 
+  /** POST sin body: usado por endpoints que no aceptan payload (ej. abort). */
+  private async postNoBody(path: string): Promise<unknown> {
+    const res = await fetch(this.baseUrl + path, { method: "POST" });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`opencode serve respondio ${res.status} en ${path}: ${text}`);
+    return text ? JSON.parse(text) : {};
+  }
+
   async createSession(directory?: string): Promise<string> {
     const path = directory ? `/session?directory=${encodeURIComponent(directory)}` : "/session";
     const data = (await this.post(path, {})) as { id?: string };
@@ -89,7 +97,8 @@ export class OpencodeClient {
   }
 
   async abort(sessionId: string): Promise<void> {
-    await this.post(`/session/${sessionId}/abort`, {});
+    // La API declara este endpoint sin body: no mandamos payload.
+    await this.postNoBody(`/session/${sessionId}/abort`);
   }
 
   async subscribe(onEvent: (evt: unknown) => void, signal: AbortSignal): Promise<void> {

@@ -158,12 +158,12 @@ describe("OpencodeClient", () => {
     );
   });
 
-  it("abort llama a POST /session/:id/abort", async () => {
+  it("abort llama a POST /session/:id/abort sin body (la API no lo acepta)", async () => {
     const reqs: Recorded[] = [];
     const client = new OpencodeClient(await startFake(reqs));
     await client.abort("ses_test");
     const req = reqs.find((r) => r.url === "/session/ses_test/abort");
-    expect(req).toMatchObject({ method: "POST" });
+    expect(req).toMatchObject({ method: "POST", body: "" });
   });
 
   it("subscribe consume GET /event, entrega eventos parseados y termina al abortar", async () => {

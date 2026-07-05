@@ -93,7 +93,11 @@ async function runJob(job: JobMeta, client: OpencodeClientLike, deps: ToolDeps, 
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
-    void client.abort(sessionId).catch(() => {});
+    void client.abort(sessionId).catch((err: Error) => {
+      // No tumbamos el job por esto (el timeout ya lo va a marcar failed),
+      // pero el fallo del abort no debe desaparecer en silencio.
+      deps.jobs.appendLog(job.id, `(aviso: abort fallo: ${err.message})`);
+    });
   }, timeoutMinutes * 60_000);
 
   let finalText = "";
@@ -237,7 +241,11 @@ export async function cancelTool(params: { jobId: string }, deps: ToolDeps): Pro
     await deps
       .clientFactory(serve.baseUrl)
       .abort(meta.opencodeSessionId)
-      .catch(() => {});
+      .catch((err: Error) => {
+        // El job se marca cancelled igual (es la intencion del usuario); el
+        // fallo del abort en si no debe tragarse en silencio.
+        deps.jobs.appendLog(meta.id, `(aviso: abort fallo: ${err.message})`);
+      });
   }
   deps.jobs.finish(meta.id, "cancelled");
   return `Job ${meta.id} cancelado. El log queda en ${deps.jobs.paths(meta.id).logPath}.`;

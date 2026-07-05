@@ -151,6 +151,18 @@ describe("parseServerEvent", () => {
     });
   });
 
+  it("session error sin error.data.message pero con error.message -> usa error.message como fallback", () => {
+    const evt = {
+      type: "session.error",
+      properties: { sessionID: "ses_2", error: { message: "algo fallo" } },
+    };
+    expect(parseServerEvent(evt)).toMatchObject({
+      kind: "error",
+      sessionId: "ses_2",
+      errorMessage: "algo fallo",
+    });
+  });
+
   it("session error sin error.data.message -> usa error.name como fallback", () => {
     const evt = {
       type: "session.error",

@@ -1,4 +1,5 @@
-import { mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -63,6 +64,10 @@ class FakeClient implements OpencodeClientLike {
 
 function makeDeps(client: FakeClient): ToolDeps {
   const projectDir = mkdtempSync(join(tmpdir(), "ocd-tools-"));
+  return makeDepsWithProjectDir(client, projectDir);
+}
+
+function makeDepsWithProjectDir(client: FakeClient, projectDir: string): ToolDeps {
   return {
     projectDir,
     config: DEFAULT_CONFIG,
@@ -70,6 +75,19 @@ function makeDeps(client: FakeClient): ToolDeps {
     serve: { ensureRunning: async () => ({ baseUrl: "http://fake", pid: 1, ownedByUs: true }) } as ToolDeps["serve"],
     clientFactory: () => client,
   };
+}
+
+/** Repo git temporal real, usado por los tests de `isolation: "worktree"` (mismo patron que worktree.test.ts). */
+function makeGitRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "ocd-tools-git-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args]);
+  git("init");
+  git("config", "user.email", "t@t.local");
+  git("config", "user.name", "t");
+  writeFileSync(join(dir, "a.txt"), "hola");
+  git("add", ".");
+  git("commit", "-m", "init");
+  return dir;
 }
 
 const PARAMS = { description: "probar tools", prompt: "haz X" };
@@ -260,5 +278,35 @@ describe("statusTool / resultTool / cancelTool / cleanupTool", () => {
     const msg = await cleanupTool({}, deps);
     expect(msg).toMatch(/No habia worktrees/);
     void jobId;
+  });
+});
+
+describe("delegateTool isolation: worktree", () => {
+  it("crea el worktree/rama con el jobId real (job existe antes del worktree)", async () => {
+    const client = new FakeClient();
+    const projectDir = makeGitRepo();
+    const deps = makeDepsWithProjectDir(client, projectDir);
+    const out = await delegateTool({ ...PARAMS, isolation: "worktree" }, deps);
+    const jobId = extractJobId(out);
+    await tick();
+    client.resolveSend("listo");
+    await tick();
+    const meta = deps.jobs.readMeta(jobId);
+    expect(meta.branch).toBe(`opencode-delegate/${jobId}`);
+    expect(meta.worktreePath).toContain(jobId);
+  });
+
+  it("createWorktree fallido marca el job failed con el error (sin worktree huerfano)", async () => {
+    const client = new FakeClient();
+    const projectDir = mkdtempSync(join(tmpdir(), "ocd-tools-norepo-"));
+    const deps = makeDepsWithProjectDir(client, projectDir);
+    await expect(delegateTool({ ...PARAMS, isolation: "worktree" }, deps)).rejects.toThrow(
+      /no es un repositorio git/,
+    );
+    const jobId = deps.jobs.list()[0].id;
+    const meta = deps.jobs.readMeta(jobId);
+    expect(meta.state).toBe("failed");
+    expect(meta.error).toMatch(/no es un repositorio git/);
+    expect(meta.worktreePath).toBeUndefined();
   });
 });

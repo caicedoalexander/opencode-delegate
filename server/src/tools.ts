@@ -120,23 +120,26 @@ export async function delegateTool(params: DelegateParams, deps: ToolDeps): Prom
   const background = params.run_in_background !== false;
   const timeoutMinutes = params.timeout_minutes ?? DEFAULT_TIMEOUT_MINUTES;
 
-  let worktree: { path: string; branch: string } | undefined;
-  if (params.isolation === "worktree") {
-    worktree = await createWorktree(deps.projectDir, `pre-${Date.now().toString(36)}`);
-  }
-
   const job = deps.jobs.createJob({
     description: params.description,
     prompt: params.prompt,
     agent: params.agent,
     model,
     isolation: params.isolation,
-    worktreePath: worktree?.path,
-    branch: worktree?.branch,
   });
   deps.jobs.appendLog(job.id, `[${job.createdAt}] job ${job.id} (${model}) — ${params.description}`);
 
   try {
+    let worktree: { path: string; branch: string } | undefined;
+    if (params.isolation === "worktree") {
+      worktree = await createWorktree(deps.projectDir, job.id);
+      // Disco-primero: el worktree ya existe en disco antes de que meta.json
+      // lo referencie, para que un crash a mitad de escritura nunca deje un
+      // meta.json apuntando a un worktree inexistente.
+      const withWorktree: JobMeta = { ...deps.jobs.readMeta(job.id), worktreePath: worktree.path, branch: worktree.branch };
+      deps.jobs.writeMeta(withWorktree);
+    }
+
     const serve = await deps.serve.ensureRunning();
     const client = deps.clientFactory(serve.baseUrl);
     const sessionId = await client.createSession(worktree?.path ?? deps.projectDir);

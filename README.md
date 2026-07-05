@@ -32,8 +32,9 @@ Pasos:
 # 1. Compilar el server MCP (una vez, desde la raíz del repo)
 cd server && npm install && npm run build
 
-# 2. Instalar el plugin en Claude Code (ruta local o repo/marketplace)
-claude plugin install <ruta-o-repo-de-opencode-delegate>
+# 2. Registrar el repo como marketplace local e instalar el plugin
+claude plugin marketplace add <ruta-al-repo-de-opencode-delegate>
+claude plugin install opencode-delegate@opencode-delegate-local
 ```
 
 Tras instalar, Claude Code levanta el MCP server del plugin automáticamente;
@@ -169,24 +170,6 @@ Los valores del ejemplo reflejan los modelos de la instalación de referencia
 - **Job atascado en `running` cuya sesión dueña ya murió:** el recovery solo
   corre al arrancar un MCP server; si otra sesión sigue viva no lo tocará.
   Usa `cancel <jobId>` para cerrarlo manualmente.
-
-## Verificación E2E (checklist manual — pendiente de ejecución humana)
-
-Requiere una sesión real de Claude Code dentro de un repo git de prueba, con
-el plugin instalado (`claude plugin install <ruta-o-repo>`):
-
-1. `/opencode-delegate:run genera un archivo hello.py que imprima hola` →
-   devuelve jobId.
-2. `/opencode-delegate:status` → muestra acciones (`→ write hello.py`...).
-3. `/opencode-delegate:result` → resultado final coherente.
-4. Delegación con `isolation: worktree` (pedirle a Claude que use la tool con
-   isolation) → verifica rama `opencode-delegate/...` y merge manual.
-5. `/opencode-delegate:cancel` sobre un job largo → estado `cancelled`.
-6. `/opencode-delegate:cleanup` → worktree eliminado, idempotente al repetir.
-7. Cerrar la sesión → verificar con el administrador de tareas que
-   `opencode serve` murió (hook).
-
-Documentar cualquier desviación como issue antes de dar por cerrada la v1.
 
 ## Tests
 
